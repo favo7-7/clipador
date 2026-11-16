@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+data
+saida
+tests
+.pytest_cache
+*.mp4
+*.mov
+*.mkv

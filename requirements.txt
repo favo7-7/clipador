@@ -1,0 +1,8 @@
+yt-dlp
+faster-whisper>=1.0.3
+numpy>=1.26
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
+# opcional: só é usado se você definir ANTHROPIC_API_KEY (IA escolhe os trechos)
+anthropic>=0.40
