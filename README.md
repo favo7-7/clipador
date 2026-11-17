@@ -43,8 +43,24 @@ Os clipes vão pra `saida/clips`. Rode `python -m clipador run --help` pra ver t
 
 ## Publicar de graça (link pro currículo)
 
-O jeito mais simples é o **Hugging Face Spaces** com Docker, porque o plano gratuito tem memória suficiente pro Whisper.
-(Confira os limites atuais em huggingface.co/docs/hub/spaces-overview.)
+### Opção 1: Render (plano gratuito, sem cartão)
+
+O `Dockerfile` já vem ajustado pra servidores pequenos: modelo de transcrição `tiny`, vídeos de até 5 minutos e arquivos de até 100 MB.
+
+1. Suba o projeto no GitHub (seção abaixo).
+2. Em render.com, crie a conta entrando com o GitHub.
+3. **New + > Web Service**, escolha o repositório `clipador`, deixe o ambiente como **Docker** e o tipo de instância **Free**.
+4. Clique em **Create Web Service** e acompanhe a aba **Logs**. O primeiro build leva alguns minutos.
+5. O link fica no formato `https://clipador-xxxx.onrender.com`.
+
+Pontos de atenção (confira os limites atuais em render.com):
+
+- O plano gratuito tem pouca memória (512 MB). Se o processamento falhar por falta de memória, o servidor precisa de mais RAM ou o vídeo precisa ser mais curto.
+- Ele "dorme" depois de uns 15 minutos sem uso, e a primeira visita demora cerca de 1 minuto pra acordar.
+
+### Opção 2: Hugging Face Spaces
+
+Em novembro de 2026, criar um Space com **Docker** pede plano pago (PRO) ou crédito na conta; só o tipo Estático é gratuito. Se você tiver plano pago, os passos são:
 
 1. Crie uma conta em huggingface.co e depois um **New Space**: nome `clipador`, SDK **Docker**, template **Blank**, hardware **CPU basic (free)**.
 2. No começo do `README.md` do Space, cole este bloco (ele diz ao Hugging Face qual porta usar):
@@ -81,6 +97,7 @@ Pontos de atenção:
 | `CLIPADOR_TTL_SECONDS` | 3600 | Tempo até os arquivos serem apagados |
 | `CLIPADOR_MODEL` | base | Modelo do Whisper (`tiny`, `base`, `small`) |
 | `CLIPADOR_ALLOW_URL` | 1 | `0` desativa o envio por link |
+| `CLIPADOR_DEBUG` | 1 | `1` mostra o erro técnico na página (bom no seu PC). No Docker já vem `0`, pra não expor detalhes do servidor |
 | `ANTHROPIC_API_KEY` | (vazio) | Ativa a escolha de trechos por IA (uso pago da API) |
 
 ## Subir no GitHub
