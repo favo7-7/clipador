@@ -230,6 +230,7 @@ def create_job(
         language=language or None,
         captions=captions,
         max_minutes=cfg["max_minutes"],
+        use_audience=False,  # servidor pequeno: busca de chat só no uso local
     )
     with _lock:
         _jobs[job_id] = {

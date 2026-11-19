@@ -7,6 +7,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
+from .audience import (
+    MIN_MESSAGES,
+    chat_density_per_second,
+    combine_audience,
+    fetch_signals,
+    parse_chat_timestamps,
+)
 from .audio import loudness_per_second
 from .cutter import cut_clip
 from .downloader import download_video, is_url
@@ -30,6 +37,8 @@ class Options:
     captions: bool = True
     use_claude: bool = True
     max_minutes: float | None = None
+    use_audience: bool = True     # tenta buscar chat/"mais revisto" quando a entrada é um link do YouTube
+    chat_file: str | None = None  # arquivo de chat exportado (YouTube, Twitch ou .txt/.csv de tempos)
 
 
 @dataclass
@@ -103,6 +112,24 @@ def process(
     # 3) melhores momentos ---------------------------------------------------------
     report("analyze", 0.65, "Procurando os melhores momentos…")
     loudness = loudness_per_second(video, duration)
+
+    chat = replay = None
+    if opts.chat_file:
+        chat_path = Path(opts.chat_file)
+        if not chat_path.exists():
+            raise ClipadorError(f"Não encontrei o arquivo de chat: {chat_path}")
+        stamps = parse_chat_timestamps(chat_path)
+        if len(stamps) < MIN_MESSAGES:
+            raise ClipadorError(
+                f"O arquivo de chat tem só {len(stamps)} mensagens; preciso de pelo menos {MIN_MESSAGES}. "
+                "Confira o formato (um tempo em segundos por linha, ou o chat exportado do YouTube/Twitch)."
+            )
+        chat = chat_density_per_second(stamps, duration)
+    elif opts.use_audience and is_url(str(source)):
+        report("analyze", 0.67, "Lendo o chat e os trechos mais revistos…")
+        chat, replay = fetch_signals(str(source), work, duration)
+    audience = combine_audience(chat, replay, duration)
+
     highlights = find_highlights(
         transcript,
         loudness,
@@ -110,6 +137,7 @@ def process(
         min_len=opts.min_len,
         max_len=opts.max_len,
         use_claude=opts.use_claude,
+        audience=audience,
     )
     if not highlights:
         raise ClipadorError("Não consegui achar trechos bons neste vídeo. Tente um vídeo mais longo.")

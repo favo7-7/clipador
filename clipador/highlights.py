@@ -18,6 +18,7 @@ import re
 
 import numpy as np
 
+from .audience import top_peaks
 from .models import Highlight, Segment, Transcript
 from .utils import fmt_time
 
@@ -103,7 +104,22 @@ def _window_slice(z: np.ndarray, start: float, end: float) -> np.ndarray:
 
 # --------------------------------------------------------------------------- heurística
 
-def _score_window(segs: list[Segment], start: float, end: float, z: np.ndarray, med_rate: float):
+def _audience_score(aud: np.ndarray | None, start: float, end: float) -> float:
+    """Quanto a audiência (chat/reproduções, já em z-score) reagiu dentro da janela."""
+    if aud is None:
+        return 0.0
+    chunk = _window_slice(aud, start, end)
+    return 1.5 * float(chunk.mean()) + 1.0 * float(np.percentile(chunk, 90))
+
+
+def _score_window(
+    segs: list[Segment],
+    start: float,
+    end: float,
+    z: np.ndarray,
+    med_rate: float,
+    aud: np.ndarray | None = None,
+):
     chunk = _window_slice(z, start, end)
     loud_mean = float(chunk.mean())
     loud_peak = float(np.percentile(chunk, 90))
@@ -123,9 +139,12 @@ def _score_window(segs: list[Segment], start: float, end: float, z: np.ndarray, 
     opening = segs[0].text.strip()
     hook = 1.0 if ("?" in opening or any(w in POWER_WORDS for w in _tokens(opening)[:12])) else 0.0
 
-    raw = loud_mean + 0.6 * loud_peak + 0.8 * rate_z + 2.0 * text_score + 0.8 * hook + 1.5 * coverage
+    aud_part = _audience_score(aud, start, end)
+    raw = loud_mean + 0.6 * loud_peak + 0.8 * rate_z + 2.0 * text_score + 0.8 * hook + 1.5 * coverage + aud_part
 
     reasons = []
+    if aud_part > 1.5:
+        reasons.append("a audiência reagiu forte (chat ou reproduções)")
     if loud_mean > 0.5 or loud_peak > 1.5:
         reasons.append("áudio mais forte que o resto do vídeo")
     if rate_z > 0.15:
@@ -146,6 +165,7 @@ def heuristic_highlights(
     num_clips: int = 5,
     min_len: float = 20.0,
     max_len: float = 55.0,
+    audience: np.ndarray | None = None,
 ) -> list[Highlight]:
     segs = [s for s in transcript.segments if s.text.strip()]
     if not segs:
@@ -164,7 +184,7 @@ def heuristic_highlights(
                 break
             if length < min_len:
                 continue
-            raw, reason = _score_window(segs[i : j + 1], start, end, z, med_rate)
+            raw, reason = _score_window(segs[i : j + 1], start, end, z, med_rate, audience)
             candidates.append((start, end, raw, reason, segs[i : j + 1]))
 
     if not candidates:
@@ -172,7 +192,7 @@ def heuristic_highlights(
         start = segs[0].start
         end = min(segs[-1].end, start + max_len)
         inside = [s for s in segs if s.start < end]
-        raw, reason = _score_window(inside, start, end, z, med_rate)
+        raw, reason = _score_window(inside, start, end, z, med_rate, audience)
         candidates = [(start, end, raw, reason, inside)]
 
     chosen = _pick(candidates, num_clips)
@@ -202,8 +222,9 @@ def loudness_highlights(
     num_clips: int = 5,
     min_len: float = 20.0,
     max_len: float = 55.0,
+    audience: np.ndarray | None = None,
 ) -> list[Highlight]:
-    """Pra vídeos sem fala: escolhe as janelas com mais energia sonora."""
+    """Pra vídeos sem fala: escolhe as janelas com mais energia sonora e reação da audiência."""
     if duration <= max_len:
         return [Highlight(0.0, duration, 100.0, "Vídeo inteiro", "Vídeo curto, usado por completo", "audio")]
 
@@ -215,6 +236,7 @@ def loudness_highlights(
         end = min(duration, t + target)
         chunk = _window_slice(z, t, end)
         raw = float(chunk.mean() + 0.6 * np.percentile(chunk, 90) + 0.3 * chunk.std())
+        raw += _audience_score(audience, t, end)
         candidates.append((t, end, raw))
         t += 5.0
 
@@ -227,7 +249,11 @@ def loudness_highlights(
             end=e,
             score=score_of[(s, e)],
             title=f"Momento em {fmt_time(s)}",
-            reason="Pico de volume e movimento sonoro (sem fala detectada)",
+            reason=(
+                "Pico de volume e reação da audiência (sem fala detectada)"
+                if audience is not None
+                else "Pico de volume e movimento sonoro (sem fala detectada)"
+            ),
             source="audio",
         )
         for s, e, _ in chosen
@@ -248,11 +274,19 @@ def claude_highlights(
     num_clips: int,
     min_len: float,
     max_len: float,
+    hot_seconds: list[int] | None = None,
 ) -> list[Highlight]:
     import anthropic
 
     segments = [s for s in transcript.segments if s.text.strip()]
     lines = "\n".join(f"[{s.start:.1f}-{s.end:.1f}] {s.text.strip()}" for s in segments)[:60000]
+    hot_line = ""
+    if hot_seconds:
+        hot_line = (
+            "- A audiência reagiu mais (chat ou reproduções) perto destes segundos: "
+            + ", ".join(str(s) for s in hot_seconds)
+            + ". Prefira trechos que incluam esses momentos.\n"
+        )
     prompt = (
         f"Abaixo está a transcrição com tempos (em segundos) de um vídeo. Escolha até {num_clips} "
         f"trechos para virar vídeos curtos de TikTok.\n\n"
@@ -261,7 +295,7 @@ def claude_highlights(
         f"- Comece e termine nos limites dos tempos da transcrição, sem cortar frases.\n"
         f"- O trecho precisa fazer sentido sozinho e ter um gancho forte nos primeiros 3 segundos.\n"
         f"- Prefira momentos de surpresa, emoção, humor, revelação ou opinião forte.\n"
-        f"- Os trechos não podem se sobrepor.\n\n"
+        f"- Os trechos não podem se sobrepor.\n{hot_line}\n"
         f"Responda SOMENTE com um array JSON, sem texto antes ou depois, neste formato:\n"
         f'[{{"start": 12.3, "end": 48.0, "title": "título curto no idioma do vídeo", '
         f'"reason": "uma frase em português dizendo por que esse trecho funciona", "score": 0-100}}]\n\n'
@@ -312,20 +346,22 @@ def find_highlights(
     min_len: float = 20.0,
     max_len: float = 55.0,
     use_claude: bool = True,
+    audience: np.ndarray | None = None,
 ) -> list[Highlight]:
+    """audience: sinal de reação da audiência por segundo, já em z-score (veja audience.py)."""
     has_speech = any(s.text.strip() for s in transcript.segments)
 
     if has_speech and use_claude and os.environ.get("ANTHROPIC_API_KEY"):
         try:
-            found = claude_highlights(transcript, num_clips, min_len, max_len)
+            found = claude_highlights(transcript, num_clips, min_len, max_len, top_peaks(audience))
             if found:
                 return found
         except Exception as exc:  # noqa: BLE001 - qualquer falha cai pra heurística
             log.warning("Seleção com Claude falhou (%s); usando heurística.", exc)
 
     if has_speech:
-        found = heuristic_highlights(transcript, loudness, num_clips, min_len, max_len)
+        found = heuristic_highlights(transcript, loudness, num_clips, min_len, max_len, audience)
         if found:
             return found
 
-    return loudness_highlights(loudness, transcript.duration, num_clips, min_len, max_len)
+    return loudness_highlights(loudness, transcript.duration, num_clips, min_len, max_len, audience)

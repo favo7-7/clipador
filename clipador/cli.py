@@ -26,6 +26,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         captions=not args.no_captions,
         use_claude=not args.no_claude,
         max_minutes=args.max_minutes,
+        use_audience=not args.no_audience,
+        chat_file=args.chat,
     )
     try:
         title, clips = process(args.source, args.out, options, _print_progress)
@@ -69,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--no-captions", action="store_true", help="não queimar legendas")
     run.add_argument("--no-claude", action="store_true", help="não usar a IA da Anthropic pra escolher trechos")
     run.add_argument("--max-minutes", type=float, default=None, help="recusar vídeos mais longos que isso")
+    run.add_argument("--chat", default=None, help="arquivo com o chat da live (pesa na escolha dos trechos)")
+    run.add_argument("--no-audience", action="store_true", help="não buscar chat/'mais revisto' automaticamente")
     run.set_defaults(func=_cmd_run)
 
     serve = sub.add_parser("serve", help="sobe o site (interface web) no seu computador")

@@ -113,6 +113,21 @@ git push -u origin main
 
 Depois, no repositório do GitHub, coloque o link do site no campo *About > Website*.
 
+## Usar o chat da live (picos de comentários)
+
+Quando muita gente comenta ao mesmo tempo, normalmente aconteceu algo importante. O Clipador soma a reação da
+audiência à nota de cada trecho, junto com volume, ritmo da fala e palavras de impacto. Como o chat reage alguns
+segundos **depois** do acontecimento, ele volta 8 segundos pra o corte pegar o lance inteiro.
+
+- **Link de live ou replay do YouTube:** é automático. Ele tenta baixar o chat do replay e o gráfico "mais revisto"
+  do vídeo; se não existir, segue sem. Exemplo: `python -m clipador run "https://youtube.com/watch?v=..." -n 10`
+- **Arquivo de chat (Twitch, ou outro):** `python -m clipador run video.mp4 --chat chat.json`. Formatos aceitos:
+  JSON do TwitchDownloader, `.live_chat.json` do yt-dlp, ou um `.txt`/`.csv` com um tempo em segundos por linha
+  (`123.4` ou `123.4,mensagem`). Precisa de pelo menos 20 mensagens.
+- **Desligar:** `--no-audience`.
+
+Esse recurso funciona na linha de comando e no site local. No site publicado (servidor pequeno) ele fica desligado.
+
 ## Testes
 
 ```
