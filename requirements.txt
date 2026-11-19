@@ -1,5 +1,6 @@
 yt-dlp
 faster-whisper>=1.0.3
+av<19
 numpy>=1.26
 fastapi>=0.115
 uvicorn>=0.30
